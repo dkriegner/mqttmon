@@ -221,7 +221,7 @@ class cursesGUI(object):
         textheight = wy - 2
         if len(lines) < textheight:
             self.scroll = 0
-        if self.scroll > len(lines) - textheight:
+        if self.scroll > abs(len(lines) - textheight):
             self.scroll = len(lines) - textheight
         lstart = -min(textheight, len(lines)) - self.scroll
         self.msgWindow.addstr(wy - 1, wx - 12, 
