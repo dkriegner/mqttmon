@@ -152,8 +152,8 @@ class cursesGUI(object):
                          'StatusWindow': self.statusWindow,
                          'nmsg': 0}
         self.updateMode = 'inplace' # can be 'continuous'/'topic'
-        
-        self.update()
+        self.lines = []
+
         # start communication
         self.com = Communicator(BROKERADDR, PORT, USER, PASSWD, self.userdict)
         self.com.subscribe(TOPIC)
@@ -165,30 +165,64 @@ class cursesGUI(object):
         """
         self.width_y, self.width_x = self.mainWindow.getmaxyx()
 
+        # message window
         self.msgWindow = curses.newwin(self.width_y - self.statwidth, self.width_x)
-        self.msgWindow.scrollok(True)
-        self.msgWindow.idlok(True)
-        self.msgWindow.keypad(True)
         self.clearMsgWindow()
+        wy, wx = self.msgWindow.getmaxyx()
+        self.textheight = wy - 2
+        self.contentwidth = wx - 2
 
+        # status window
         self.statusWindow = curses.newwin(self.statwidth, self.width_x, self.width_y - self.statwidth, 0)
-        self.statusWindow.addstr(1, 1, 'q - Quit; e - Erase; i/c - inplace/continuous updates; p - (un)pause')
-        self.statusWindow.refresh()
+        self.redrawStatus()
    
     def clearMsgWindow(self, title='Messages'):
         self.msgWindow.erase()
         self.msgWindow.border(0, 0, 0, 0)
         self.msgWindow.addstr(0, 2, ' {} '.format(title))
         self.msgWindow.move(1, 1)
-        self.msgWindow.refresh()
+
+    def redrawStatus(self):
+        self.statusWindow.addstr(1, 1, 'q - Quit; i/c - inplace/continuous updates; p - (un)pause')
 
     def resize(self):
+        self.old_width_y, self.old_width_x = (self.width_y, self.width_x)
         self.width_y, self.width_x = self.mainWindow.getmaxyx()
-        self.mainWindow.resize(self.width_y, self.width_x)
         self.msgWindow.resize(self.width_y - self.statwidth, self.width_x)
-        self.msgWindow.refresh()
+        self.resizeMsgWindow()
         self.statusWindow.resize(self.statwidth, self.width_x)
-        self.statusWindow.refresh()
+        self.statusWindow.mvwin(self.width_y - self.statwidth, 0)
+        self.update()
+
+    def resizeMsgWindow(self):
+        old_textheight, old_contentwidth = (self.textheight, self.contentwidth)
+        wy, wx = self.msgWindow.getmaxyx()
+        self.textheight = wy - 2
+        self.contentwidth = wx - 2
+        #vertical change
+        step = 1 if (self.width_y - self.old_width_y) > 0 else -1
+        for cl in range(self.old_width_y+step, self.width_y+step, step):
+            if cl > self.old_width_y:
+                self.msgWindow.move(old_textheight+1, 1)
+                self.msgWindow.insertln()
+            elif self.textheight>len(self.lines):
+                self.msgWindow.move(self.textheight+1, 1)
+                self.msgWindow.deleteln()
+            else:
+                self.msgWindow.move(1, 1)
+                self.msgWindow.deleteln()
+        # horizontal change
+        step = 1 if (self.width_x - self.old_width_x) > 0 else -1
+        for cc in range(self.old_width_x+step, self.width_x+step, step):
+            if cc > self.old_width_x:
+                # if screenlines would be known the suitable character could be inserted here directly!
+                for py in range(1,1+self.textheight):
+                    self.msgWindow.insch(py, old_contentwidth+1, ' ')
+            else:
+                for py in range(1,1+self.textheight):
+                    self.msgWindow.delch(py, self.contentwidth+1)
+        # fix border
+        self.msgWindow.border(0, 0, 0, 0)                
 
     def mainLoop(self):
         """
@@ -196,19 +230,19 @@ class cursesGUI(object):
         """
         self.msgWindow.timeout(20)
         updating = True
-        while self.com.client.loop(timeout=0.1) == 0:
+        while True:
+            self.com.client.loop(timeout=0.05)
             # check key-events
             c = self.msgWindow.getch()
             if c == ord('q'):
                 sys.exit()
-            elif c == ord('e'):
-                self.scroll = 0
-                self.clearMsgWindow()
             elif c == ord('c'):
                 self.scroll = 0
+                self.clearMsgWindow()
                 self.updateMode = 'continuous'
             elif c == ord('i'):
                 self.scroll = 0
+                self.clearMsgWindow()
                 self.updateMode = 'inplace'
             elif c == ord('p'):
                 updating = not updating
@@ -228,31 +262,26 @@ class cursesGUI(object):
         """
         self.msgWindow.move(1, 1)
         window = self.msgWindow
-        cursesGUI.setStatusMessage(self.statusWindow, 
-            'nmsg: {:4d};'.format(len(self.timeList)), start=1, end=12)
         if self.updateMode == 'inplace':
-            lines = []
+            self.lines = []
             for k in sorted(self.topicList):
-                lines += self.topicList[k][-1].listLines()
+                self.lines += self.topicList[k][-1].listLines()
         elif self.updateMode == 'continuous':
-            lines = self.timeList.lines
-        wy, wx = window.getmaxyx()
-        textheight = wy - 2
-        contentwidth = wx - 2
-        if len(lines) < textheight:
+            self.lines = self.timeList.lines
+        if len(self.lines) < self.textheight:
             self.scroll = 0
-        if self.scroll > abs(len(lines) - textheight):
-            self.scroll = len(lines) - textheight
-        lstart = -min(textheight, len(lines)) - self.scroll
-        scrollinfo = ' {}-{}/{} '.format(len(lines) + lstart,
-                                         len(lines) + lstart + min(len(lines), textheight),
-                                         len(lines))
-        self.msgWindow.addstr(wy - 1, wx - len(scrollinfo) - 2, scrollinfo)
+        if self.scroll > abs(len(self.lines) - self.textheight):
+            self.scroll = len(self.lines) - self.textheight
+        lstart = -min(self.textheight, len(self.lines)) - self.scroll
+        scrollinfo = ' {}-{}/{} '.format(len(self.lines) + lstart,
+                                         len(self.lines) + lstart + min(len(self.lines), self.textheight),
+                                         len(self.lines))
+        self.msgWindow.addstr(self.textheight+1, self.contentwidth - len(scrollinfo), scrollinfo)
         self.msgWindow.move(1, 1)
         lcnt = 0
-        for c, (i, l, a) in enumerate(lines[lstart:]):
-            if c >= textheight-1: break
-            cursesGUI.addLineStr(window, l, contentwidth - i, 1 + i, attr=a)
+        for c, (i, l, a) in enumerate(self.lines[lstart:]):
+            if c >= self.textheight: break
+            cursesGUI.addLineStr(window, l, self.contentwidth - i, 1 + i, attr=a)
 
     def update(self):
         self.msgWindow.refresh()

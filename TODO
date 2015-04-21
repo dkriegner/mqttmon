@@ -1,4 +1,10 @@
+Code Comments, function documentation...
+
 TUI-code cleanup
+
+buffer somewhere the lines which are currently on the screen to enable
+scrolling also without that this list is updated. This will also allow for
+better resize support
 
 proper pause updating including the possibility to scroll the existing messages!
 
@@ -7,8 +13,6 @@ or settings windows to change these settings
 
 possibility to subscribe to topics via command line and/or TUI
 
-proper window resize support
-
 maximum number of messages saved in buffer to avoid infinite memory growth
 
 more different list modes:
@@ -16,3 +20,5 @@ more different list modes:
  * message details
 
 lots of error handling
+
+PEP8 formating of the code!
