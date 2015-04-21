@@ -125,11 +125,16 @@ class Communicator(object):
         m = Message(msg.payload, msg.topic)
         userdata['TopicList'].addMessage(m)
         userdata['TimeList'].append(m)
+        # increase message counter
+        userdata['nmsg'] += 1
         # show Message on screen
         if 'StatusWindow' in userdata:
             cursesGUI.setStatusMessage(userdata['StatusWindow'], 
+            'nmsg: {:4d};'.format(userdata['nmsg']), start=1, end=12)
+            cursesGUI.setStatusMessage(userdata['StatusWindow'], 
                 'New msg in {topic} at {time}'.format(topic=m.topic,
                                                       time=m.timestr))
+
 
 class cursesGUI(object):
     statwidth = 2 # height of the status window area (minimum 2)
@@ -144,7 +149,8 @@ class cursesGUI(object):
                          'TimeList': self.timeList,
                          'MainWindow': self.mainWindow,
                          'MessageWindow': self.msgWindow,
-                         'StatusWindow': self.statusWindow}
+                         'StatusWindow': self.statusWindow,
+                         'nmsg': 0}
         self.updateMode = 'inplace' # can be 'continuous'/'topic'
         
         self.update()
@@ -159,28 +165,37 @@ class cursesGUI(object):
         """
         self.width_y, self.width_x = self.mainWindow.getmaxyx()
 
-        self.msgWindow = curses.newpad(self.width_y - self.statwidth, self.width_x)
+        self.msgWindow = curses.newwin(self.width_y - self.statwidth, self.width_x)
         self.msgWindow.scrollok(True)
         self.msgWindow.idlok(True)
         self.msgWindow.keypad(True)
         self.clearMsgWindow()
 
-        self.statusWindow = curses.newpad(self.statwidth, self.width_x)
-        self.statusWindow.addstr(1, 1, 'q - Quit; e - Erase; i/c - inplace/continuous updates')
-        self.statusWindow.refresh(0, 0, self.width_y - self.statwidth, 0, self.width_y, self.width_x)
+        self.statusWindow = curses.newwin(self.statwidth, self.width_x, self.width_y - self.statwidth, 0)
+        self.statusWindow.addstr(1, 1, 'q - Quit; e - Erase; i/c - inplace/continuous updates; p - (un)pause')
+        self.statusWindow.refresh()
    
     def clearMsgWindow(self, title='Messages'):
         self.msgWindow.erase()
         self.msgWindow.border(0, 0, 0, 0)
         self.msgWindow.addstr(0, 2, ' {} '.format(title))
         self.msgWindow.move(1, 1)
-        self.msgWindow.refresh(0, 0, 0, 0, self.width_y - self.statwidth, self.width_x)
+        self.msgWindow.refresh()
+
+    def resize(self):
+        self.width_y, self.width_x = self.mainWindow.getmaxyx()
+        self.mainWindow.resize(self.width_y, self.width_x)
+        self.msgWindow.resize(self.width_y - self.statwidth, self.width_x)
+        self.msgWindow.refresh()
+        self.statusWindow.resize(self.statwidth, self.width_x)
+        self.statusWindow.refresh()
 
     def mainLoop(self):
         """
         main loop of the program
         """
         self.msgWindow.timeout(20)
+        updating = True
         while self.com.client.loop(timeout=0.1) == 0:
             # check key-events
             c = self.msgWindow.getch()
@@ -195,22 +210,26 @@ class cursesGUI(object):
             elif c == ord('i'):
                 self.scroll = 0
                 self.updateMode = 'inplace'
+            elif c == ord('p'):
+                updating = not updating
             elif c == curses.KEY_UP:
                 self.scroll += 1
             elif c == curses.KEY_DOWN and self.scroll > 0:
                 self.scroll -= 1
-
-            self.updateMsgList()
+            elif c == curses.KEY_RESIZE:
+                self.resize()
+            if updating:
+                self.updateMsgList()
             self.update()
 
     def updateMsgList(self):
         """
         the message list will be updated depending on the current update mode
         """
-        self.clearMsgWindow()
+        self.msgWindow.move(1, 1)
         window = self.msgWindow
         cursesGUI.setStatusMessage(self.statusWindow, 
-            'nmsg: {:4d}'.format(len(self.timeList)), start=1, end=11)
+            'nmsg: {:4d};'.format(len(self.timeList)), start=1, end=12)
         if self.updateMode == 'inplace':
             lines = []
             for k in sorted(self.topicList):
@@ -219,27 +238,28 @@ class cursesGUI(object):
             lines = self.timeList.lines
         wy, wx = window.getmaxyx()
         textheight = wy - 2
+        contentwidth = wx - 2
         if len(lines) < textheight:
             self.scroll = 0
         if self.scroll > abs(len(lines) - textheight):
             self.scroll = len(lines) - textheight
         lstart = -min(textheight, len(lines)) - self.scroll
-        self.msgWindow.addstr(wy - 1, wx - 12, 
-                              ' {}-{}/{} '.format(len(lines) + lstart,
-                                                  len(lines) + lstart + min(len(lines), textheight),
-                                                  len(lines)))
+        scrollinfo = ' {}-{}/{} '.format(len(lines) + lstart,
+                                         len(lines) + lstart + min(len(lines), textheight),
+                                         len(lines))
+        self.msgWindow.addstr(wy - 1, wx - len(scrollinfo) - 2, scrollinfo)
         self.msgWindow.move(1, 1)
         lcnt = 0
         for c, (i, l, a) in enumerate(lines[lstart:]):
             if c >= textheight-1: break
-            cursesGUI.addLineStr(window, l, min(len(l), wx - 2 - i), 1 + i, attr=a)
+            cursesGUI.addLineStr(window, l, contentwidth - i, 1 + i, attr=a)
 
     def update(self):
-        self.msgWindow.refresh(0, 0, 0, 0, self.width_y - self.statwidth, self.width_x)
-        self.statusWindow.refresh(0, 0, self.width_y - self.statwidth, 0, self.width_y, self.width_x)
+        self.msgWindow.refresh()
+        self.statusWindow.refresh()
     
     @staticmethod
-    def setStatusMessage(window, string, start=14, end=-1, attr=curses.A_STANDOUT):
+    def setStatusMessage(window, string, start=14, end=-1, attr=curses.A_NORMAL):
         wy, wx = window.getmaxyx()
         window.move(0, start)
         if end == -1: 
@@ -258,8 +278,12 @@ class cursesGUI(object):
     @staticmethod
     def addLineStr(window, line, nchar, start=1, attr=curses.A_NORMAL):
         y, x = window.getyx()
+        window.move(y, 1)
+        window.addstr(' '*(start-1), curses.A_NORMAL)
         window.move(y, start)
         window.addnstr(line, nchar, attr)
+        y, x = window.getyx() # this complicated treatment here is necessary for special char treatment
+        window.addstr(' '*(nchar-(x-start)), curses.A_NORMAL)
         y, x = window.getyx()
         window.move(y+1, start)
 

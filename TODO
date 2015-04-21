@@ -1,13 +1,13 @@
 TUI-code cleanup
 
-pause updating
+proper pause updating including the possibility to scroll the existing messages!
 
 command line parameters for setting the MQTT server settings
 or settings windows to change these settings
 
 possibility to subscribe to topics via command line and/or TUI
 
-window resize support
+proper window resize support
 
 maximum number of messages saved in buffer to avoid infinite memory growth
 
