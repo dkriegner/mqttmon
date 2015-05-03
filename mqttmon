@@ -25,13 +25,14 @@ import paho.mqtt.client as paho
 
 #########################################################
 # Global variables
-BROKERADDR = 'test.mosquitto.org' # hostname or IP-address of the broker
-PORT = 1883 # port number of the broker
-USER = None # user name used for the connection
-PASSWD = None # password used for the connection
-TOPIC = '#' # topic to which the monitor should connect to
+BROKERADDR = 'test.mosquitto.org'  # hostname or IP-address of the broker
+PORT = 1883  # port number of the broker
+USER = None  # user name used for the connection
+PASSWD = None  # password used for the connection
+TOPIC = '#'  # topic to which the monitor should connect to
 ##########################################################
 # NO CHANGES NEEDED BELOW FOR THE BASIC USE OF THIS SCRIPT
+
 
 class TopicList(dict):
     """
@@ -102,6 +103,8 @@ class Message(object):
 
     Methods are provided to help to show the message on the screen.
     """
+    _timefmt = "%H:%M:%S"
+
     def __init__(self, msg, topic):
         """
         initialize the Message by setting its content and topic.
@@ -112,10 +115,11 @@ class Message(object):
          topic: topic of the message
         """
         self.timestamp = time.time()
-        self.timestr = time.strftime("%H:%M:%S", time.localtime(self.timestamp))
+        self.timestr = time.strftime(self._timefmt,
+                                     time.localtime(self.timestamp))
         self.topic = topic
         self.message = msg
- 
+
     def listLines(self):
         """
         method to return a list of lines describing the message.
@@ -124,7 +128,7 @@ class Message(object):
         linetext, curses_attribute) which can be used to display the message on
         the screen
         """
-        ret = [(0, self.topic, curses.A_BOLD),]
+        ret = [(0, self.topic, curses.A_BOLD), ]
         try:
             for line in self.message.decode('utf-8').splitlines():
                 ret.append((1, line, curses.A_NORMAL))
@@ -169,9 +173,9 @@ class Communicator(object):
          rc:        the connection result
         """
         if 'StatusWindow' in userdata:
-            cursesTUI.setStatusMessage(userdata['StatusWindow'], 
+            cursesTUI.setStatusMessage(userdata['StatusWindow'],
                                        'Connected with result code '+str(rc))
-        
+
     def subscribe(self, *args):
         """
         method to subscribe to certain topics of the broker
@@ -189,7 +193,7 @@ class Communicator(object):
 
     def on_message(self, client, userdata, msg):
         """
-        callback upon arrival of a message from the broker. 
+        callback upon arrival of a message from the broker.
         The new message is added to the corresponding MessageLists in the
         userdata.
 
@@ -208,9 +212,11 @@ class Communicator(object):
         userdata['nmsg'] += 1
         # show Message on screen
         if 'StatusWindow' in userdata:
-            cursesTUI.setStatusMessage(userdata['StatusWindow'], 
-            'nmsg: {:4d};'.format(userdata['nmsg']), start=1, end=12)
-            cursesTUI.setStatusMessage(userdata['StatusWindow'], 
+            cursesTUI.setStatusMessage(
+                userdata['StatusWindow'],
+                'nmsg: {:4d};'.format(userdata['nmsg']), start=1, end=12)
+            cursesTUI.setStatusMessage(
+                userdata['StatusWindow'],
                 'New msg in {topic} at {time}'.format(topic=m.topic,
                                                       time=m.timestr))
 
@@ -221,8 +227,8 @@ class cursesTUI(object):
     initialization of the broker connection. After initialization a loop is
     started which handles the user input and update of the display.
     """
-    statwidth = 2 # height of the status window area (minimum 2)
-    scroll = 0 # integer constant to save the scroll offset
+    statwidth = 2  # height of the status window area (minimum 2)
+    scroll = 0  # integer constant to save the scroll offset
 
     def __init__(self, stdscr):
         """
@@ -243,31 +249,33 @@ class cursesTUI(object):
                          'MessageWindow': self.msgWindow,
                          'StatusWindow': self.statusWindow,
                          'nmsg': 0}
-        self.updateMode = 'inplace' # can be 'continuous'/'topic'
+        self.updateMode = 'inplace'  # can be 'continuous'/'topic'
         self.lines = []
 
         # start communication
         self.com = Communicator(BROKERADDR, PORT, USER, PASSWD, self.userdict)
         self.com.subscribe(TOPIC)
         self.mainLoop()
-    
+
     def initMain(self):
         """
-        initialize main curses windows. 
+        initialize main curses windows.
         """
         self.width_y, self.width_x = self.mainWindow.getmaxyx()
 
         # message window
-        self.msgWindow = curses.newwin(self.width_y - self.statwidth, self.width_x)
+        self.msgWindow = curses.newwin(self.width_y - self.statwidth,
+                                       self.width_x)
         self.clearMsgWindow()
         wy, wx = self.msgWindow.getmaxyx()
         self.textheight = wy - 2
         self.contentwidth = wx - 2
 
         # status window
-        self.statusWindow = curses.newwin(self.statwidth, self.width_x, self.width_y - self.statwidth, 0)
+        self.statusWindow = curses.newwin(self.statwidth, self.width_x,
+                                          self.width_y - self.statwidth, 0)
         self.redrawStatus()
-   
+
     def clearMsgWindow(self, title='Messages'):
         """
         clears the message window and redraws its border.
@@ -281,7 +289,8 @@ class cursesTUI(object):
         """
         redraws the status window keyboard shortcuts
         """
-        self.statusWindow.addstr(1, 1, 'q - Quit; i/c - inplace/continuous updates; p - (un)pause')
+        self.statusWindow.addstr(
+            1, 1, 'q - Quit; i/c - inplace/continuous updates; p - (un)pause')
 
     def resize(self):
         """
@@ -308,13 +317,13 @@ class cursesTUI(object):
         wy, wx = self.msgWindow.getmaxyx()
         self.textheight = wy - 2
         self.contentwidth = wx - 2
-        #vertical change
+        # vertical change
         step = 1 if (self.width_y - old_width_y) > 0 else -1
         for cl in range(old_width_y+step, self.width_y+step, step):
             if cl > old_width_y:
                 self.msgWindow.move(old_textheight+1, 1)
                 self.msgWindow.insertln()
-            elif self.textheight>len(self.lines):
+            elif self.textheight > len(self.lines):
                 self.msgWindow.move(self.textheight+1, 1)
                 self.msgWindow.deleteln()
             else:
@@ -324,14 +333,13 @@ class cursesTUI(object):
         step = 1 if (self.width_x - old_width_x) > 0 else -1
         for cc in range(old_width_x+step, self.width_x+step, step):
             if cc > self.old_width_x:
-                # if screenlines would be known the suitable character could be inserted here directly!
-                for py in range(1,1+self.textheight):
+                for py in range(1, 1+self.textheight):
                     self.msgWindow.insch(py, old_contentwidth+1, ' ')
             else:
-                for py in range(1,1+self.textheight):
+                for py in range(1, 1+self.textheight):
                     self.msgWindow.delch(py, self.contentwidth+1)
         # fix border
-        self.msgWindow.border(0, 0, 0, 0)                
+        self.msgWindow.border(0, 0, 0, 0)
 
     def mainLoop(self):
         """
@@ -384,15 +392,19 @@ class cursesTUI(object):
         if self.scroll > abs(len(self.lines) - self.textheight):
             self.scroll = len(self.lines) - self.textheight
         lstart = -min(self.textheight, len(self.lines)) - self.scroll
-        scrollinfo = ' {}-{}/{} '.format(len(self.lines) + lstart,
-                                         len(self.lines) + lstart + min(len(self.lines), self.textheight),
-                                         len(self.lines))
-        self.msgWindow.addstr(self.textheight+1, self.contentwidth - len(scrollinfo), scrollinfo)
+        scrollinfo = ' {}-{}/{} '.format(
+            len(self.lines) + lstart,
+            len(self.lines) + lstart + min(len(self.lines), self.textheight),
+            len(self.lines))
+        self.msgWindow.addstr(self.textheight+1,
+                              self.contentwidth - len(scrollinfo),
+                              scrollinfo)
         self.msgWindow.move(1, 1)
         lcnt = 0
         for c, (i, l, a) in enumerate(self.lines[lstart:]):
-            if c >= self.textheight: break
-            self.addLineStr(window, l, self.contentwidth - i, 1 + i, attr=a)
+            if c >= self.textheight:
+                break
+            self.addLineStr(window, l, self.contentwidth-i, 1+i, attr=a)
 
     def update(self):
         """
@@ -400,9 +412,10 @@ class cursesTUI(object):
         """
         self.msgWindow.refresh()
         self.statusWindow.refresh()
-    
+
     @staticmethod
-    def setStatusMessage(window, string, start=14, end=-1, attr=curses.A_NORMAL):
+    def setStatusMessage(window, string, start=14, end=-1,
+                         attr=curses.A_NORMAL):
         """
         Method setting the status message in the status bar. Here the arrival
         of a new message/connection to the broker/subscription to a new
@@ -418,12 +431,12 @@ class cursesTUI(object):
         """
         wy, wx = window.getmaxyx()
         window.move(0, start)
-        if end == -1: 
+        if end == -1:
             end = wx - 2
             window.clrtoeol()
         for line in string.splitlines():
             window.addnstr(line, end-start, attr)
-    
+
     @staticmethod
     def addMultiLineStr(window, string, start=1, end=-1, attr=curses.A_NORMAL):
         """
@@ -466,7 +479,7 @@ class cursesTUI(object):
         # clear the rest of the line without destroying the window border
         y, x = window.getyx()
         # this complicated treatment here is necessary for special character
-        # functionality 
+        # functionality
         window.addstr(' '*(nchar-(x-start)), curses.A_NORMAL)
         y, x = window.getyx()
         window.move(y+1, start)
