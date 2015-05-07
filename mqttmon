@@ -17,21 +17,13 @@
 #
 # Copyright (C) 2015 Dominik Kriegner <dominik.kriegner@gmail.com>
 
+import argparse
+import configparser
 import curses
 import curses.panel
 import time
 import sys
 import paho.mqtt.client as paho
-
-#########################################################
-# Global variables
-BROKERADDR = 'test.mosquitto.org'  # hostname or IP-address of the broker
-PORT = 1883  # port number of the broker
-USER = None  # user name used for the connection
-PASSWD = None  # password used for the connection
-TOPIC = '#'  # topic to which the monitor should connect to
-##########################################################
-# NO CHANGES NEEDED BELOW FOR THE BASIC USE OF THIS SCRIPT
 
 
 class TopicList(dict):
@@ -230,7 +222,7 @@ class cursesTUI(object):
     statwidth = 2  # height of the status window area (minimum 2)
     scroll = 0  # integer constant to save the scroll offset
 
-    def __init__(self, stdscr):
+    def __init__(self, stdscr, args):
         """
         initialization of the windows and setting up of the communication
 
@@ -253,8 +245,9 @@ class cursesTUI(object):
         self.lines = []
 
         # start communication
-        self.com = Communicator(BROKERADDR, PORT, USER, PASSWD, self.userdict)
-        self.com.subscribe(TOPIC)
+        self.com = Communicator(args.brokeraddr, args.port, args.username,
+                                args.passwd, self.userdict)
+        self.com.subscribe(*args.topic)
         self.mainLoop()
 
     def initMain(self):
@@ -332,7 +325,7 @@ class cursesTUI(object):
         # horizontal change
         step = 1 if (self.width_x - old_width_x) > 0 else -1
         for cc in range(old_width_x+step, self.width_x+step, step):
-            if cc > self.old_width_x:
+            if cc > old_width_x:
                 for py in range(1, 1+self.textheight):
                     self.msgWindow.insch(py, old_contentwidth+1, ' ')
             else:
@@ -486,4 +479,39 @@ class cursesTUI(object):
 
 
 if __name__ == '__main__':
-    curses.wrapper(cursesTUI)
+    conf_parser = argparse.ArgumentParser(add_help=False)
+    conf_parser.add_argument('-c', '--config', metavar='conffile', type=str,
+                             default='', help='specify config file')
+    args, remaining_argv = conf_parser.parse_known_args()
+    defaults = {
+        'port': 1883,
+        'passwd': None,
+        'username': None,
+        'topic': '#'
+        }
+    if args.config:
+        config = configparser.SafeConfigParser()
+        config.read([args.config])
+        for item, val in config.items("Defaults"):
+            defaults[item] = val
+
+    parser = argparse.ArgumentParser(parents=[conf_parser],
+                                     description='curses TUI for MQTT message'
+                                     ' monitoring')
+    parser.set_defaults(**defaults)
+    parser.add_argument('-p', '--port', metavar='port', type=int,
+                        help='TCP port for the MQTT broker')
+    parser.add_argument('-u', '--user', dest='username', metavar='username',
+                        type=str, help='user name for the broker connection'
+                        ' (empty if not needed)')
+    parser.add_argument('-P', '--pass', metavar='passwd', dest='passwd',
+                        type=str, help='password for the broker connection'
+                        ' (empty if not needed)')
+    parser.add_argument('-t', '--topic', metavar='topic', type=str, nargs='+',
+                        help='topics to subscribe')
+    parser.add_argument('brokeraddr', metavar='address', type=str,
+                        help='Address of the MQTT broker')
+
+    args = parser.parse_args(remaining_argv)
+
+    curses.wrapper(cursesTUI, args)
