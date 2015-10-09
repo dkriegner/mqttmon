@@ -18,11 +18,14 @@
 # Copyright (C) 2015 Dominik Kriegner <dominik.kriegner@gmail.com>
 
 import argparse
+import collections
 import configparser
 import curses
 import curses.panel
+import itertools
 import time
 import sys
+
 import paho.mqtt.client as paho
 
 
@@ -58,12 +61,13 @@ class TopicList(dict):
         super().__getitem__(topic).append(msg)
 
 
-class MessageList(list):
+class MessageList(collections.deque):
     """
-    List of messages. This extends the Python type list
-    by utilities to display the message on the screen.
+    List of messages. This uses collections.deque
+    and provides textlines to display the message on the screen.
     """
-    def __init__(self, name):
+
+    def __init__(self, name, maxlen=1024):
         """
         initialize the message list
 
@@ -72,8 +76,8 @@ class MessageList(list):
          name:  name of the Messagelist
         """
         self.name = name
-        self.lines = []
-        super().__init__()
+        self.lines = collections.deque(maxlen=maxlen*2)
+        super().__init__(maxlen=maxlen)
 
     def append(self, msg):
         """
@@ -343,7 +347,11 @@ class cursesTUI(object):
         updating = True
         while True:
             # call the communication loop of the MQTT client
-            self.com.client.loop(timeout=0.05)
+            try:
+                self.com.client.loop(timeout=0.05)
+            except UnicodeDecodeError:
+                self.setStatusMessage(self.statusWindow,
+                                      'UnicodeDecodeError in MQTT client')
             # check key-events
             c = self.msgWindow.getch()
             if c == ord('q'):
@@ -358,9 +366,9 @@ class cursesTUI(object):
                 self.updateMode = 'inplace'
             elif c == ord('p'):
                 updating = not updating
-            elif c == curses.KEY_UP:
+            elif c in (curses.KEY_UP, 65):
                 self.scroll += 1
-            elif c == curses.KEY_DOWN and self.scroll > 0:
+            elif c in (curses.KEY_DOWN, 66) and self.scroll > 0:
                 self.scroll -= 1
             elif c == curses.KEY_RESIZE:
                 self.resize()
@@ -394,7 +402,8 @@ class cursesTUI(object):
                               scrollinfo)
         self.msgWindow.move(1, 1)
         lcnt = 0
-        for c, (i, l, a) in enumerate(self.lines[lstart:]):
+        lstart = lstart if lstart > 0 else len(self.lines)+lstart
+        for c, (i, l, a) in enumerate(itertools.islice(self.lines, lstart, None)):
             if c >= self.textheight:
                 break
             self.addLineStr(window, l, self.contentwidth-i, 1+i, attr=a)

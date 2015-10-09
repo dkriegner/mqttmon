@@ -3,8 +3,6 @@ proper pause updating including the possibility to scroll the existing messages!
 settings windows to change server settings while running
 possibility to subscribe to topics via TUI
 
-maximum number of messages saved in buffer to avoid infinite memory growth
-
 more different list modes:
  * only one topic
  * message details
