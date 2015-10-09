@@ -20,6 +20,7 @@
 import argparse
 import collections
 import configparser
+import copy
 import curses
 import curses.panel
 import itertools
@@ -235,6 +236,10 @@ class cursesTUI(object):
          stdscr:    standard screen as supplied by curses.wrapper. used as main
                     window.
         """
+        self.ispaused = False  # update mode paused flag
+        self.updateMode = 'inplace'  # can be 'continuous'/'inplace'
+        self.lines = []
+
         self.mainWindow = stdscr
         self.initMain()
         self.topicList = TopicList()
@@ -245,8 +250,6 @@ class cursesTUI(object):
                          'MessageWindow': self.msgWindow,
                          'StatusWindow': self.statusWindow,
                          'nmsg': 0}
-        self.updateMode = 'inplace'  # can be 'continuous'/'topic'
-        self.lines = []
 
         # start communication
         self.com = Communicator(args.brokeraddr, args.port, args.username,
@@ -286,8 +289,22 @@ class cursesTUI(object):
         """
         redraws the status window keyboard shortcuts
         """
-        self.statusWindow.addstr(
-            1, 1, 'q - Quit; i/c - inplace/continuous updates; p - (un)pause')
+        h, w = self.statusWindow.getmaxyx()
+        if w < 58:
+            raise Exception("Window is too narrow, needs at least 58 width!")
+        self.statusWindow.addstr(1, 1, 'q - Quit;')
+        self.statusWindow.addstr(1, 11, 'updates: ')
+        if self.updateMode == 'continuous':
+            self.statusWindow.addstr(1, 20, 'i-inplace')
+            self.statusWindow.addstr(1, 30, 'c-continuous', curses.A_BOLD)
+            self.statusWindow.addstr(1, 42, ';')
+        else:
+            self.statusWindow.addstr(1, 20, 'i-inplace', curses.A_BOLD)
+            self.statusWindow.addstr(1, 30, 'c-continuous;')
+        if self.ispaused:
+            self.statusWindow.addstr(1, 44, 'p - (un)pause', curses.A_BOLD)
+        else:
+            self.statusWindow.addstr(1, 44, 'p - (un)pause')
 
     def resize(self):
         """
@@ -344,7 +361,6 @@ class cursesTUI(object):
         the display is updated as needed.
         """
         self.msgWindow.timeout(20)
-        updating = True
         while True:
             # call the communication loop of the MQTT client
             try:
@@ -365,15 +381,15 @@ class cursesTUI(object):
                 self.clearMsgWindow()
                 self.updateMode = 'inplace'
             elif c == ord('p'):
-                updating = not updating
+                self.ispaused = not self.ispaused
             elif c in (curses.KEY_UP, 65):
                 self.scroll += 1
             elif c in (curses.KEY_DOWN, 66) and self.scroll > 0:
                 self.scroll -= 1
             elif c == curses.KEY_RESIZE:
                 self.resize()
-            if updating:
-                self.updateMsgList()
+            self.updateMsgList()
+            self.redrawStatus()
             self.update()
 
     def updateMsgList(self):
@@ -382,12 +398,13 @@ class cursesTUI(object):
         """
         self.msgWindow.move(1, 1)
         window = self.msgWindow
-        if self.updateMode == 'inplace':
-            self.lines = []
-            for k in sorted(self.topicList):
-                self.lines += self.topicList[k][-1].listLines()
-        elif self.updateMode == 'continuous':
-            self.lines = self.timeList.lines
+        if not self.ispaused:
+            if self.updateMode == 'inplace':
+                self.lines = []
+                for k in sorted(self.topicList):
+                    self.lines += self.topicList[k][-1].listLines()
+            elif self.updateMode == 'continuous':
+                self.lines = copy.copy(self.timeList.lines)
         if len(self.lines) < self.textheight:
             self.scroll = 0
         if self.scroll > abs(len(self.lines) - self.textheight):
@@ -403,7 +420,8 @@ class cursesTUI(object):
         self.msgWindow.move(1, 1)
         lcnt = 0
         lstart = lstart if lstart > 0 else len(self.lines)+lstart
-        for c, (i, l, a) in enumerate(itertools.islice(self.lines, lstart, None)):
+        shownlines = itertools.islice(self.lines, lstart, None)
+        for c, (i, l, a) in enumerate(shownlines):
             if c >= self.textheight:
                 break
             self.addLineStr(window, l, self.contentwidth-i, 1+i, attr=a)
