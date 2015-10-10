@@ -255,7 +255,7 @@ class cursesTUI(object):
         self.com = Communicator(args.brokeraddr, args.port, args.username,
                                 args.passwd, self.userdict)
         self.com.subscribe(*args.topic)
-        self.mainLoop()
+        self.mainLoop(args.timeout)
 
     def initMain(self):
         """
@@ -355,16 +355,17 @@ class cursesTUI(object):
         # fix border
         self.msgWindow.border(0, 0, 0, 0)
 
-    def mainLoop(self):
+    def mainLoop(self, timeout):
         """
-        main loop of the program. checks for new messages or keyboard input.
-        the display is updated as needed.
+        main loop of the program. checks for new messages or keyboard input
+        and updates the display. For the input checking a timeout (ms) is
+        used.
         """
-        self.msgWindow.timeout(20)
+        self.msgWindow.timeout(timeout)
         while True:
             # call the communication loop of the MQTT client
             try:
-                self.com.client.loop(timeout=0.05)
+                self.com.client.loop(timeout=timeout/1000/10)
             except UnicodeDecodeError:
                 self.setStatusMessage(self.statusWindow,
                                       'UnicodeDecodeError in MQTT client')
@@ -514,7 +515,8 @@ if __name__ == '__main__':
         'port': 1883,
         'passwd': None,
         'username': None,
-        'topic': '#'
+        'topic': '#',
+        'timeout': 100
         }
     if args.config:
         config = configparser.SafeConfigParser()
