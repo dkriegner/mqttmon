@@ -34,9 +34,15 @@ class TopicList(dict):
     """
     class extending a Python dictionary to hold the information about different
     topics so far received from the broker. For every topic a asociated
-    MessageList is created.
+    MessageList is created. The topics are sorted in a Tree structure for
+    later processing.
     """
-    def addTopic(self, topicName):
+    def __init__(self, name, path=None):
+        super().__init__()
+        self.name = '/'.join((path, name)) if path else name
+        self.msglist = MessageList(name)
+
+    def addSubTopic(self, topicName, path):
         """
         add new Topic to the TopicList
 
@@ -44,22 +50,86 @@ class TopicList(dict):
         ---------
          topicName: name of the topic to be added to the list
         """
-        super().__setitem__(topicName, MessageList(topicName))
+        super().__setitem__(topicName, TopicList(topicName, path))
 
-    def addMessage(self, msg):
+    def addMessage(self, topic, msg):
         """
-        add new Message to a certain topic. The topic is found from the
-        msg.topic property.
+        add new Message to a certain topic.
 
         Parameter
         ---------
+         topic: topic to which the message should be added
          msg:   Message object to be added to the list of messages
         """
-        topic = msg.topic
-        # add Topic to TopicList
-        if topic not in super().keys():
-            self.addTopic(topic)
-        super().__getitem__(topic).append(msg)
+        self.msglist.append(msg)
+        if topic:
+            lt = topic.split('/', maxsplit=1)
+            if lt[0] not in super().keys():
+                self.addSubTopic(lt[0], self.name)
+            if len(lt) > 1:
+                super().__getitem__(lt[0]).addMessage(lt[1], msg)
+            else:
+                super().__getitem__(lt[0]).addMessage(None, msg)
+
+    def getMessages(self, mode):
+        """
+        return different types of message lists
+        """
+        if mode == 'topic':
+            return self.listTopics()
+        elif mode == 'inplace':
+            lm = self.lastMessage()
+            if lm is None:
+                return []
+            else:
+                return self.lastMessage()
+        elif mode == 'continuous':
+            return self.msglist.lines
+        else:
+            raise Exception('unknown Message list mode')
+
+    def lastMessage(self):
+        """
+        method to return a list of last messages per topic.
+
+        Every entry in the returned list includes a tuple of (intentation,
+        linetext, curses_attribute) which can be used to display the list of
+        messages on the screen
+        """
+        if len(self) == 0:
+            if len(self.msglist) > 0:
+                return self.msglist[-1].listLines()
+            else:
+                return None
+        else:
+            ret = []
+            for t in super().keys():
+                lines = super().__getitem__(t).lastMessage()
+                if lines:
+                    ret += lines
+            return ret
+
+    def listTopics(self):
+        """
+        method to return a list of lines describing the topics.
+
+        Every entry in the returned list includes a tuple of (intentation,
+        linetext, curses_attribute) which can be used to display the list of
+        topics on the screen
+        """
+        ret = []
+        ret.append((0, self.name, curses.A_BOLD))
+        mlist = self.msglist
+        if len(self) > 0:
+            desc = '{} subtopic{}, '.format(len(self),
+                                            's' if len(self) > 0 else '')
+        else:
+            desc = ''
+        desc += '{} msgs, last update {}'.format(len(mlist), mlist[-1].timestr)
+        ret.append((1, desc, curses.A_NORMAL))
+        for topic in sorted(self):
+            ret += super().__getitem__(topic).listTopics()
+        return ret
 
 
 class MessageList(collections.deque):
@@ -68,7 +138,7 @@ class MessageList(collections.deque):
     and provides textlines to display the message on the screen.
     """
 
-    def __init__(self, name, maxlen=1024):
+    def __init__(self, name, maxlen=512):
         """
         initialize the message list
 
@@ -203,8 +273,7 @@ class Communicator(object):
         """
         # add message to the corresponding message list
         m = Message(msg.payload, msg.topic)
-        userdata['TopicList'].addMessage(m)
-        userdata['TimeList'].append(m)
+        userdata['TopicList'].addMessage(msg.topic, m)
         # increase message counter
         userdata['nmsg'] += 1
         # show Message on screen
@@ -237,16 +306,16 @@ class cursesTUI(object):
         """
         self.scroll = 0  # integer constant to save the scroll offset
         self.ispaused = False  # update mode paused flag
-        self.updateMode = 'inplace'  # can be 'continuous'/'inplace'
+        self.updateMode = 'inplace'  # can be 'continuous',
+                                     #        'inplace',
+                                     #    and 'topic'
         self.lines = []  # line buffer for shown message list
         self.cursory = 0  # cursor position to select messages
 
         self.mainWindow = stdscr
         self.initMain()
-        self.topicList = TopicList()
-        self.timeList = MessageList('TimeList')
+        self.topicList = TopicList('#')
         self.userdict = {'TopicList': self.topicList,
-                         'TimeList': self.timeList,
                          'MainWindow': self.mainWindow,
                          'MessageWindow': self.msgWindow,
                          'StatusWindow': self.statusWindow,
@@ -293,19 +362,25 @@ class cursesTUI(object):
         h, w = self.statusWindow.getmaxyx()
         if w < 58:
             raise Exception("Window is too narrow, needs at least 58 width!")
-        self.statusWindow.addstr(1, 1, 'q - Quit;')
-        self.statusWindow.addstr(1, 11, 'updates: ')
+        self.statusWindow.addstr(1, 1, 'q-quit;')
+        self.statusWindow.addstr(1, 9, 'msg: ')
         if self.updateMode == 'continuous':
-            self.statusWindow.addstr(1, 20, 'i-inplace')
-            self.statusWindow.addstr(1, 30, 'c-continuous', curses.A_BOLD)
-            self.statusWindow.addstr(1, 42, ';')
+            self.statusWindow.addstr(1, 14, 'i-inplace')
+            self.statusWindow.addstr(1, 24, 'c-continuous', curses.A_BOLD)
+            self.statusWindow.addstr(1, 37, 't-topics;')
+        elif self.updateMode == 'inplace':
+            self.statusWindow.addstr(1, 14, 'i-inplace', curses.A_BOLD)
+            self.statusWindow.addstr(1, 24, 'c-continuous')
+            self.statusWindow.addstr(1, 37, 't-topics;')
         else:
-            self.statusWindow.addstr(1, 20, 'i-inplace', curses.A_BOLD)
-            self.statusWindow.addstr(1, 30, 'c-continuous;')
+            self.statusWindow.addstr(1, 14, 'i-inplace')
+            self.statusWindow.addstr(1, 24, 'c-continuous')
+            self.statusWindow.addstr(1, 37, 't-topics', curses.A_BOLD)
+            self.statusWindow.addstr(1, 44, ';')
         if self.ispaused:
-            self.statusWindow.addstr(1, 44, 'p - (un)pause', curses.A_BOLD)
+            self.statusWindow.addstr(1, 47, 'p-(un)pause', curses.A_BOLD)
         else:
-            self.statusWindow.addstr(1, 44, 'p - (un)pause')
+            self.statusWindow.addstr(1, 47, 'p-(un)pause')
 
     def resize(self):
         """
@@ -383,6 +458,10 @@ class cursesTUI(object):
                 self.scroll = 0
                 self.clearMsgWindow()
                 self.updateMode = 'inplace'
+            elif c == ord('t'):
+                self.scroll = 0
+                self.clearMsgWindow()
+                self.updateMode = 'topic'
             elif c == ord('p'):
                 self.ispaused = not self.ispaused
             elif c in (curses.KEY_UP, 65):
@@ -405,12 +484,7 @@ class cursesTUI(object):
         window = self.msgWindow
         # create message list
         if not self.ispaused:
-            if self.updateMode == 'inplace':
-                self.lines = []
-                for k in sorted(self.topicList):
-                    self.lines += self.topicList[k][-1].listLines()
-            elif self.updateMode == 'continuous':
-                self.lines = copy.copy(self.timeList.lines)
+            self.lines = self.topicList.getMessages(self.updateMode)
         # handle scrolling
         if len(self.lines) < self.textheight:
             self.scroll = 0
