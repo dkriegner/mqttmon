@@ -225,7 +225,6 @@ class cursesTUI(object):
     started which handles the user input and update of the display.
     """
     statwidth = 2  # height of the status window area (minimum 2)
-    scroll = 0  # integer constant to save the scroll offset
 
     def __init__(self, stdscr, args):
         """
@@ -236,9 +235,11 @@ class cursesTUI(object):
          stdscr:    standard screen as supplied by curses.wrapper. used as main
                     window.
         """
+        self.scroll = 0  # integer constant to save the scroll offset
         self.ispaused = False  # update mode paused flag
         self.updateMode = 'inplace'  # can be 'continuous'/'inplace'
-        self.lines = []
+        self.lines = []  # line buffer for shown message list
+        self.cursory = 0  # cursor position to select messages
 
         self.mainWindow = stdscr
         self.initMain()
@@ -362,6 +363,7 @@ class cursesTUI(object):
         used.
         """
         self.msgWindow.timeout(timeout)
+        curses.curs_set(2)
         while True:
             # call the communication loop of the MQTT client
             try:
@@ -384,13 +386,15 @@ class cursesTUI(object):
             elif c == ord('p'):
                 self.ispaused = not self.ispaused
             elif c in (curses.KEY_UP, 65):
-                self.scroll += 1
-            elif c in (curses.KEY_DOWN, 66) and self.scroll > 0:
-                self.scroll -= 1
+                self.cursory -= 1
+            elif c in (curses.KEY_DOWN, 66):
+                self.cursory += 1
+            elif c == curses.KEY_ENTER:
+                pass
             elif c == curses.KEY_RESIZE:
                 self.resize()
-            self.updateMsgList()
             self.redrawStatus()
+            self.updateMsgList()
             self.update()
 
     def updateMsgList(self):
@@ -399,6 +403,7 @@ class cursesTUI(object):
         """
         self.msgWindow.move(1, 1)
         window = self.msgWindow
+        # create message list
         if not self.ispaused:
             if self.updateMode == 'inplace':
                 self.lines = []
@@ -406,33 +411,42 @@ class cursesTUI(object):
                     self.lines += self.topicList[k][-1].listLines()
             elif self.updateMode == 'continuous':
                 self.lines = copy.copy(self.timeList.lines)
+        # handle scrolling
         if len(self.lines) < self.textheight:
             self.scroll = 0
+        nlines = min(self.textheight, len(self.lines))
+        if self.cursory >= nlines:
+            self.scroll -= self.cursory - nlines + 1
+            if self.scroll < 0:
+                self.scroll = 0
+            self.cursory = nlines - 1 if nlines > 0 else 0
+        elif self.cursory < 0:
+            self.scroll += -self.cursory
+            self.cursory = 0
         if self.scroll > abs(len(self.lines) - self.textheight):
             self.scroll = len(self.lines) - self.textheight
-        lstart = -min(self.textheight, len(self.lines)) - self.scroll
+        lstart = max(0, len(self.lines) - self.textheight - self.scroll)
         scrollinfo = ' {}-{}/{} '.format(
-            len(self.lines) + lstart,
-            len(self.lines) + lstart + min(len(self.lines), self.textheight),
+            lstart,
+            lstart + min(len(self.lines), self.textheight),
             len(self.lines))
         self.msgWindow.addstr(self.textheight+1,
                               self.contentwidth - len(scrollinfo),
                               scrollinfo)
+        # output message list
         self.msgWindow.move(1, 1)
-        lcnt = 0
-        lstart = lstart if lstart > 0 else len(self.lines)+lstart
-        shownlines = itertools.islice(self.lines, lstart, None)
+        shownlines = itertools.islice(self.lines, lstart, lstart+nlines)
         for c, (i, l, a) in enumerate(shownlines):
-            if c >= self.textheight:
-                break
             self.addLineStr(window, l, self.contentwidth-i, 1+i, attr=a)
+        # show cursor position
+        self.msgWindow.move(self.cursory+1, 1)
 
     def update(self):
         """
         redraws the screen content after a string change
         """
-        self.msgWindow.refresh()
         self.statusWindow.refresh()
+        self.msgWindow.refresh()
 
     @staticmethod
     def setStatusMessage(window, string, start=14, end=-1,
