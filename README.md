@@ -6,7 +6,7 @@ A screenshot of the default view is shown below:
 
 ![mqttmonitor screenshot](https://raw.githubusercontent.com/dkriegner/mqttmon/master/screenshot.png?raw=true "screenshot")
 
-Currently not support for sending messages is included!
+Currently not support for sending messages is included nor planned!
 
 ## Installation
 
@@ -16,14 +16,36 @@ download script and put it in any folder of your convenience.
 
 Starting the TUI is done by:
 
-	mqttmonitor
+	mqttmon test.mosquitto.org
+    
+    Usage: mqttmon [-h] [-c conffile] [-p port] [-u username] [-P passwd]
+               [-t topic]
+               address
+   
+    curses TUI for MQTT message monitoring
 
-Currently the programm does not accept any arguments. The server settings need to be made in the top of the script by changing some global variables.
+    positional arguments:
+      address               Address of the MQTT broker
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      -c conffile, --config conffile
+                            specify config file
+      -p port, --port port  TCP port for the MQTT broker
+      -u username, --user username
+                            user name for the broker connection (empty if not
+                            needed)
+      -P passwd, --pass passwd
+                            password for the broker connection (empty if not
+                            needed)
+      -t topic, --topic topic
+                            topics to subscribe
+
+The programm needs at least the server address of the Broker. Settings can also be made in a ini-style config file.
 
 ## Status
 
-The project is pre-alpha. Not yet user friendly and likely to contain serious
-bugs! A list of important things to be fixed can be found in a TODO file.
+The project is in beta-phase. Might need improvements but is basically usable! A list of things which need fixing can be found in a TODO file.
 
 ### Dependencies
 
