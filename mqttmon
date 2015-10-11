@@ -660,7 +660,8 @@ if __name__ == '__main__':
         'passwd': None,
         'username': None,
         'topic': '#',
-        'timeout': 100
+        'timeout': 100,
+        'brokeraddr': None
         }
     if args.config:
         config = configparser.SafeConfigParser()
@@ -682,7 +683,11 @@ if __name__ == '__main__':
                         ' (empty if not needed)')
     parser.add_argument('-t', '--topic', metavar='topic', type=str,
                         help='topics to subscribe')
-    parser.add_argument('brokeraddr', metavar='address', type=str,
-                        help='Address of the MQTT broker')
+    parser.add_argument('brokeraddr', metavar='brokeraddress', type=str,
+                        help='Address of the MQTT broker', nargs='?')
     args = parser.parse_args(remaining_argv)
+    if not args.brokeraddr:
+        print('Broker-address or config file must be specified!')
+        sys.exit()
+
     curses.wrapper(cursesTUI, args)
