@@ -75,7 +75,7 @@ class TopicList(dict):
         """
         return different types of message lists
         """
-        if mode == 'topic':
+        if mode == 'topics':
             return self.listTopics()
         elif mode == 'inplace':
             lm = self.lastMessage()
@@ -83,7 +83,7 @@ class TopicList(dict):
                 return []
             else:
                 return self.lastMessage()
-        elif mode == 'continuous':
+        elif mode == 'continuous' or 'topic':
             return self.msglist.lines
         else:
             raise Exception('unknown Message list mode')
@@ -118,15 +118,17 @@ class TopicList(dict):
         topics on the screen
         """
         ret = []
-        ret.append((0, self.name, curses.A_BOLD))
+        ret.append((self, 0, self.name, curses.A_BOLD))
         mlist = self.msglist
         if len(self) > 0:
             desc = '{} subtopic{}, '.format(len(self),
                                             's' if len(self) > 0 else '')
         else:
             desc = ''
-        desc += '{} msgs, last update {}'.format(len(mlist), mlist[-1].timestr)
-        ret.append((1, desc, curses.A_NORMAL))
+        desc += '{} msgs'.format(len(mlist))
+        if len(mlist) > 0:
+            desc += ', last update {}'.format(mlist[-1].timestr)
+        ret.append((self, 1, desc, curses.A_NORMAL))
         for topic in sorted(self):
             ret += super().__getitem__(topic).listTopics()
         return ret
@@ -171,6 +173,7 @@ class Message(object):
     Methods are provided to help to show the message on the screen.
     """
     _timefmt = "%H:%M:%S"
+    _longtimefmt = _timefmt + "%d/%m %Y"
 
     def __init__(self, msg, topic):
         """
@@ -195,12 +198,28 @@ class Message(object):
         linetext, curses_attribute) which can be used to display the message on
         the screen
         """
-        ret = [(0, self.topic, curses.A_BOLD), ]
+        ret = [(self, 0, self.topic, curses.A_BOLD), ]
         try:
             for line in self.message.decode('utf-8').splitlines():
-                ret.append((1, line, curses.A_NORMAL))
+                ret.append((self, 1, line, curses.A_NORMAL))
         except UnicodeDecodeError:
-            ret.append((1, 'msg not decodable to UTF-8', curses.A_UNDERLINE))
+            ret.append((self, 1, 'msg not decodable to UTF-8',
+                        curses.A_UNDERLINE))
+        return ret
+
+    def listDetails(self):
+        """
+        returns details about the message.
+
+        Every entry in the returned list includes a tuple of (intentation,
+        linetext, curses_attribute) which can be used to display the message on
+        the screen
+        """
+        ret = self.listLines()
+        ret.append((self, 0, '----', curses.A_BOLD))
+        tstamp = time.strftime(self._timefmt, time.localtime(self.timestamp))
+        ret.append((self, 1, 'message received at {}'.format(tstamp),
+                    curses.A_NORMAL))
         return ret
 
 
@@ -306,9 +325,11 @@ class cursesTUI(object):
         """
         self.scroll = 0  # integer constant to save the scroll offset
         self.ispaused = False  # update mode paused flag
-        self.updateMode = 'inplace'  # can be 'continuous',
-                                     #        'inplace',
-                                     #    and 'topic'
+        self.updateMode = 'inplace'  # can be 'continuous': as recv msg
+                                     #        'inplace': latest msg/topic
+                                     #        'topics': overview of topics
+                                     #        'topic': msges from single topic
+                                     #        'msg': details about message
         self.lines = []  # line buffer for shown message list
         self.cursory = 0  # cursor position to select messages
 
@@ -354,6 +375,9 @@ class cursesTUI(object):
         self.msgWindow.border(0, 0, 0, 0)
         self.msgWindow.addstr(0, 2, ' {} '.format(title))
         self.msgWindow.move(1, 1)
+        self.scroll = 0
+        self.ispaused = False
+        self.lines = []
 
     def redrawStatus(self):
         """
@@ -451,25 +475,27 @@ class cursesTUI(object):
             if c == ord('q'):
                 sys.exit()
             elif c == ord('c'):
-                self.scroll = 0
                 self.clearMsgWindow()
                 self.updateMode = 'continuous'
             elif c == ord('i'):
-                self.scroll = 0
                 self.clearMsgWindow()
                 self.updateMode = 'inplace'
             elif c == ord('t'):
-                self.scroll = 0
-                self.clearMsgWindow()
-                self.updateMode = 'topic'
+                self.clearMsgWindow(title='Topic list')
+                self.updateMode = 'topics'
             elif c == ord('p'):
                 self.ispaused = not self.ispaused
             elif c in (curses.KEY_UP, 65):
                 self.cursory -= 1
             elif c in (curses.KEY_DOWN, 66):
                 self.cursory += 1
-            elif c == curses.KEY_ENTER:
-                pass
+            elif c in (curses.KEY_ENTER, 10):
+                if isinstance(self.shownobjects[self.cursory], Message):
+                    self.clearMsgWindow(title='Message details')
+                    self.updateMode = 'msg'
+                elif isinstance(self.shownobjects[self.cursory], TopicList):
+                    self.clearMsgWindow(title='Topic messages')
+                    self.updateMode = 'topic'
             elif c == curses.KEY_RESIZE:
                 self.resize()
             self.redrawStatus()
@@ -484,7 +510,14 @@ class cursesTUI(object):
         window = self.msgWindow
         # create message list
         if not self.ispaused:
-            self.lines = self.topicList.getMessages(self.updateMode)
+            if self.updateMode in ('topic', 'msg') and self.lines == []:
+                o = self.shownobjects[self.cursory]
+                if isinstance(o, Message):
+                    self.lines = o.listDetails()
+                elif isinstance(o, TopicList):
+                    self.lines = o.getMessages(self.updateMode)
+            elif self.updateMode in ('inplace', 'topics', 'continuous'):
+                self.lines = self.topicList.getMessages(self.updateMode)
         # handle scrolling
         if len(self.lines) < self.textheight:
             self.scroll = 0
@@ -510,7 +543,9 @@ class cursesTUI(object):
         # output message list
         self.msgWindow.move(1, 1)
         shownlines = itertools.islice(self.lines, lstart, lstart+nlines)
-        for c, (i, l, a) in enumerate(shownlines):
+        self.shownobjects = []
+        for c, (o, i, l, a) in enumerate(shownlines):
+            self.shownobjects.append(o)
             self.addLineStr(window, l, self.contentwidth-i, 1+i, attr=a)
         # show cursor position
         self.msgWindow.move(self.cursory+1, 1)
@@ -630,5 +665,4 @@ if __name__ == '__main__':
                         help='Address of the MQTT broker')
 
     args = parser.parse_args(remaining_argv)
-
     curses.wrapper(cursesTUI, args)
