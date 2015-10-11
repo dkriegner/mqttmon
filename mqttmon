@@ -239,11 +239,13 @@ class Communicator(object):
          passwd:    password used for the authentication (optional)
          userdata:  data object forwarded to all the callbacks
         """
+        self.topics = []
         self.client = paho.Client('mqttstatus')
         if user:
             self.client.username_pw_set(user, password=passwd)
         self.client.on_connect = self.on_connect
         self.client.on_message = self.on_message
+        self.client.on_subscribe = self.on_subscribe
         self.client.user_data_set(userdata)
         self.client.connect(address, port, 60)
 
@@ -273,9 +275,28 @@ class Communicator(object):
         """
         if len(args) == 0:
             self.client.subscribe("#")
+            self.topics.append('#')
         else:
             for t in args:
                 self.client.subscribe(t)
+                self.topics.append(t)
+
+    def on_subscribe(self, client, userdata, mid, qos):
+        """
+        callback upon arrival of a subscribe confirmation from the broker.
+
+        Parameter
+        ---------
+         client:    the client instance for this callback
+         userdata:  the private user data as set by the initialization.
+         mid:       message id
+         qos:       qos code from the broker
+        """
+        if 'StatusWindow' in userdata:
+            t = ' '.join(self.topics)
+            cursesTUI.setStatusMessage(
+                userdata['StatusWindow'],
+                'successfully subscribed topic: {}'.format(t))
 
     def on_message(self, client, userdata, msg):
         """
@@ -335,7 +356,7 @@ class cursesTUI(object):
 
         self.mainWindow = stdscr
         self.initMain()
-        self.topicList = TopicList('#')
+        self.topicList = TopicList(args.topic)
         self.userdict = {'TopicList': self.topicList,
                          'MainWindow': self.mainWindow,
                          'MessageWindow': self.msgWindow,
@@ -345,7 +366,7 @@ class cursesTUI(object):
         # start communication
         self.com = Communicator(args.brokeraddr, args.port, args.username,
                                 args.passwd, self.userdict)
-        self.com.subscribe(*args.topic)
+        self.com.subscribe(args.topic)
         self.mainLoop(args.timeout)
 
     def initMain(self):
@@ -659,10 +680,9 @@ if __name__ == '__main__':
     parser.add_argument('-P', '--pass', metavar='passwd', dest='passwd',
                         type=str, help='password for the broker connection'
                         ' (empty if not needed)')
-    parser.add_argument('-t', '--topic', metavar='topic', type=str, nargs='+',
+    parser.add_argument('-t', '--topic', metavar='topic', type=str,
                         help='topics to subscribe')
     parser.add_argument('brokeraddr', metavar='address', type=str,
                         help='Address of the MQTT broker')
-
     args = parser.parse_args(remaining_argv)
     curses.wrapper(cursesTUI, args)
