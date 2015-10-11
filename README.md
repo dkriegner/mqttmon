@@ -18,15 +18,17 @@ Starting the TUI is done by:
 
 	mqttmon test.mosquitto.org
     
-    Usage: mqttmon [-h] [-c conffile] [-p port] [-u username] [-P passwd]
-               [-t topic]
-               address
-   
+Command line options are:
+
+    usage: mqttmon [-h] [-c conffile] [-p port] [-u username] [-P passwd]
+                   [-t topic]
+                   [brokeraddress]
+    
     curses TUI for MQTT message monitoring
-
+    
     positional arguments:
-      address               Address of the MQTT broker
-
+      brokeraddress         Address of the MQTT broker
+    
     optional arguments:
       -h, --help            show this help message and exit
       -c conffile, --config conffile
@@ -41,7 +43,18 @@ Starting the TUI is done by:
       -t topic, --topic topic
                             topics to subscribe
 
+
 The programm needs at least the server address of the Broker. Settings can also be made in a ini-style config file.
+
+An example config file for [test.mosquitto.org](http://test.mosquitto.org/) could look like
+
+    [Defaults]
+    port = 1883
+    #username = user
+    #passwd = password
+    topic = #
+    brokeraddr = test.mosquitto.org
+
 
 ## Status
 
