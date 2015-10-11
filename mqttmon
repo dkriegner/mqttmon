@@ -63,7 +63,7 @@ class TopicList(dict):
         """
         self.msglist.append(msg)
         if topic:
-            lt = topic.split('/', maxsplit=1)
+            lt = topic.split('/', 1)
             if lt[0] not in super().keys():
                 self.addSubTopic(lt[0], self.name)
             if len(lt) > 1:
