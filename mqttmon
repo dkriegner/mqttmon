@@ -175,7 +175,7 @@ class Message(object):
     _timefmt = "%H:%M:%S"
     _longtimefmt = _timefmt + "%d/%m %Y"
 
-    def __init__(self, msg, topic):
+    def __init__(self, msg, topic, retain, qos):
         """
         initialize the Message by setting its content and topic.
 
@@ -189,6 +189,8 @@ class Message(object):
                                      time.localtime(self.timestamp))
         self.topic = topic
         self.message = msg
+        self.retain = retain
+        self.qos = qos
 
     def listLines(self):
         """
@@ -219,6 +221,9 @@ class Message(object):
         ret.append((self, 0, '----', curses.A_BOLD))
         tstamp = time.strftime(self._timefmt, time.localtime(self.timestamp))
         ret.append((self, 1, 'message received at {}'.format(tstamp),
+                    curses.A_NORMAL))
+        ret.append((self, 1, 'retain flag: {}; QOS: {}'.format(self.retain,
+                                                               self.qos),
                     curses.A_NORMAL))
         return ret
 
@@ -312,7 +317,7 @@ class Communicator(object):
                     topic, payload, qos, retain.
         """
         # add message to the corresponding message list
-        m = Message(msg.payload, msg.topic)
+        m = Message(msg.payload, msg.topic, msg.retain, msg.qos)
         userdata['TopicList'].addMessage(msg.topic, m)
         # increase message counter
         userdata['nmsg'] += 1
