@@ -2,6 +2,13 @@
 
 A primitive TUI tool to show the messages received from a MQTT broker. The main difference to mosquitto_sub or other CLI tools which are able to connect to a MQTT broker is that it allows different view/update modes and scrolling in the message list.
 
+Supported view modes are:
+
+* continuous: lists messages as received
+* inplace: lists only the last message per topic
+* topics: lists topics and messages per topic upon selection
+* details: by selecting one message details about this message are shown (retain, QOS-flag, receiving time)
+
 A screenshot of the default view is shown below:
 
 ![mqttmonitor screenshot](https://raw.githubusercontent.com/dkriegner/mqttmon/master/screenshot.png?raw=true "screenshot")
