@@ -272,13 +272,16 @@ class Communicator:
         Password for authentication
     userdata : dict, optional
         Data to pass to callbacks
+    protocol : int, optional
+        MQTT protocol version to use (3 for v3.1, 4 for v3.1.1, 5 for v5.0)
     """
     def __init__(self, address: str, port: int, user: Optional[str] = None,
-                passwd: Optional[str] = None, userdata: Optional[dict] = None):
+                passwd: Optional[str] = None, userdata: Optional[dict] = None,
+                protocol: int = 4):
         """Initialize connection to MQTT broker."""
         self.topics: list[str] = []
-        self.client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2,
-                                       'mqttstatus')
+        version = mqtt_client.CallbackAPIVersion.VERSION2
+        self.client = mqtt_client.Client(version, 'mqttstatus', protocol=protocol)
         if user:
             self.client.username_pw_set(user, password=passwd)
         self.client.on_connect = self.on_connect
@@ -413,7 +416,7 @@ class cursesTUI:
 
         # start communication
         self.com = Communicator(args.brokeraddr, args.port, args.username,
-                                args.passwd, self.userdict)
+                                args.passwd, self.userdict, args.protocol)
         self.com.subscribe(args.topic)
         self.mainLoop(args.timeout)
 
@@ -715,7 +718,8 @@ if __name__ == '__main__':
         'username': None,
         'topic': '#',
         'timeout': 100,
-        'brokeraddr': None
+        'brokeraddr': None,
+        'protocol': 4
         }
     if args.config:
         config = configparser.ConfigParser()
@@ -737,6 +741,8 @@ if __name__ == '__main__':
                         ' (empty if not needed)')
     parser.add_argument('-t', '--topic', metavar='topic', type=str,
                         help='topics to subscribe')
+    parser.add_argument('--protocol', type=int, choices=[3,4,5],
+                       help='MQTT protocol version (3=v3.1, 4=v3.1.1, 5=v5.0)')
     parser.add_argument('brokeraddr', metavar='brokeraddress', type=str,
                         help='Address of the MQTT broker', nargs='?')
     args = parser.parse_args(remaining_argv)
