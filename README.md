@@ -24,18 +24,18 @@ download script and put it in any folder of your convenience.
 Starting the TUI is done by:
 
 	mqttmon test.mosquitto.org
-    
+
 Command line options are:
 
     usage: mqttmon [-h] [-c conffile] [-p port] [-u username] [-P passwd]
                    [-t topic]
                    [brokeraddress]
-    
+
     curses TUI for MQTT message monitoring
-    
+
     positional arguments:
       brokeraddress         Address of the MQTT broker
-    
+
     optional arguments:
       -h, --help            show this help message and exit
       -c conffile, --config conffile
@@ -49,6 +49,8 @@ Command line options are:
                             needed)
       -t topic, --topic topic
                             topics to subscribe
+      -v version, --protocol version
+                            protocol version to use (3=v3.1, 4=v3.1.1, 5=v5.0)
 
 
 The programm needs at least the server address of the Broker. Settings can also be made in a ini-style config file.
@@ -61,6 +63,7 @@ An example config file for [test.mosquitto.org](http://test.mosquitto.org/) coul
     #passwd = password
     topic = #
     brokeraddr = test.mosquitto.org
+    protocol = 4
 
 
 ## Status
@@ -71,5 +74,5 @@ The project is in beta-phase. Might need improvements but is basically usable! A
 
 This script is written in Python and therefore needs
 
-* [Python 3.X](https://www.python.org/downloads) and 
+* [Python 3.X](https://www.python.org/downloads) and
 * the [paho-mqtt](https://pypi.python.org/pypi/paho-mqtt) package (>v2.0)
