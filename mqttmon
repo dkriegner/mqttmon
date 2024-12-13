@@ -17,6 +17,8 @@
 #
 # Copyright (C) 2015, 2024 Dominik Kriegner <dominik.kriegner@gmail.com>
 
+"""MQTT monitor application for monitoring MQTT broker messages."""
+
 from __future__ import annotations
 
 import argparse
@@ -34,35 +36,46 @@ from paho.mqtt import client as mqtt_client
 
 
 class TopicList(dict):
-    """
-    class extending a Python dictionary to hold the information about different
-    topics so far received from the broker. For every topic a asociated
-    MessageList is created. The topics are sorted in a Tree structure for
-    later processing.
+    """Dictionary for organizing MQTT topics and messages.
+
+    A class extending a Python dictionary to hold the information about different
+    topics received from the broker. For every topic a associated MessageList is
+    created. The topics are sorted in a Tree structure for later processing.
+
+    Parameters
+    ----------
+    name : str
+        Name of the topic list
+    path : str, optional
+        Parent path for this topic list
     """
     def __init__(self, name: str, path: Optional[str] = None):
+        """Initialize the topic list."""
         super().__init__()
         self.name = '/'.join((path, name)) if path else name
         self.msglist = MessageList(name)
 
-    def addSubTopic(self, topicName: str, path: str):
-        """
-        add new Topic to the TopicList
+    def addSubTopic(self, topicName: str, path: str) -> None:
+        """Add a new topic to the TopicList.
 
-        Parameter
-        ---------
-         topicName: name of the topic to be added to the list
+        Parameters
+        ----------
+        topicName : str
+            Name of the topic to be added
+        path : str
+            Path for the new topic
         """
         super().__setitem__(topicName, TopicList(topicName, path))
 
-    def addMessage(self, topic: str, msg: Any):
-        """
-        add new Message to a certain topic.
+    def addMessage(self, topic: str, msg: Any) -> None:
+        """Add a new message to a topic.
 
-        Parameter
-        ---------
-         topic: topic to which the message should be added
-         msg:   Message object to be added to the list of messages
+        Parameters
+        ----------
+        topic : str
+            Topic to add the message to
+        msg : Any
+            Message object to be added
         """
         self.msglist.append(msg)
         if topic:
@@ -74,9 +87,18 @@ class TopicList(dict):
             else:
                 super().__getitem__(lt[0]).addMessage(None, msg)
 
-    def getMessages(self, mode: str):
-        """
-        return different types of message lists
+    def getMessages(self, mode: str) -> list:
+        """Get message list based on specified mode.
+
+        Parameters
+        ----------
+        mode : str
+            Type of message list to return
+
+        Returns
+        -------
+        list
+            Message list in the requested format
         """
         if mode == 'topics':
             return self.listTopics()
@@ -91,13 +113,14 @@ class TopicList(dict):
         else:
             raise Exception('unknown Message list mode')
 
-    def lastMessage(self):
-        """
-        method to return a list of last messages per topic.
+    def lastMessage(self) -> Optional[list]:
+        """Return list of last messages per topic.
 
-        Every entry in the returned list includes a tuple of (intentation,
-        linetext, curses_attribute) which can be used to display the list of
-        messages on the screen
+        Returns
+        -------
+        list or None
+            List of tuples (indentation, line text, curses attribute) for display,
+            or None if no messages
         """
         if len(self) == 0:
             if len(self.msglist) > 0:
@@ -112,13 +135,13 @@ class TopicList(dict):
                     ret += lines
             return ret
 
-    def listTopics(self):
-        """
-        method to return a list of lines describing the topics.
+    def listTopics(self) -> list:
+        """Return formatted list of topics.
 
-        Every entry in the returned list includes a tuple of (intentation,
-        linetext, curses_attribute) which can be used to display the list of
-        topics on the screen
+        Returns
+        -------
+        list
+            List of tuples (indentation, line text, curses attribute) for display
         """
         ret = []
         ret.append((self, 0, self.name, curses.A_BOLD))
@@ -138,55 +161,58 @@ class TopicList(dict):
 
 
 class MessageList(collections.deque):
-    """
-    List of messages. This uses collections.deque
-    and provides textlines to display the message on the screen.
-    """
+    """List for storing and displaying MQTT messages.
 
+    Extends collections.deque to provide text line formatting capabilities
+    for displaying messages on the screen.
+
+    Parameters
+    ----------
+    name : str
+        Name of the message list
+    maxlen : int, optional
+        Maximum length for message history, by default 512
+    """
     def __init__(self, name: str, maxlen: int = 512):
-        """
-        initialize the message list
-
-        Parameter
-        ---------
-         name:  name of the Messagelist
-        """
+        """Initialize the message list."""
         self.name = name
         self.lines = collections.deque(maxlen=maxlen*2)
         super().__init__(maxlen=maxlen)
 
-    def append(self, msg: Any):
-        """
-        append a msg to the list.
+    def append(self, msg: Any) -> None:
+        """Append a message to the list.
 
-        Parameter
-        ---------
-         msg:   Message object to be added to the list
+        Parameters
+        ----------
+        msg : Any
+            Message object to append
         """
         self.lines += msg.listLines()
         super().append(msg)
 
 
 class Message:
-    """
-    Message object holding all the information about a message. In addition to
-    the message itself this are the topic under which the message was received
-    and a timestamp (when the message was received)
+    """Object for storing and formatting MQTT messages.
 
-    Methods are provided to help to show the message on the screen.
+    Holds message content, topic, timestamp and formatting methods
+    for display.
+
+    Parameters
+    ----------
+    msg : bytes
+        Raw message content
+    topic : str
+        Topic message was received on
+    retain : bool
+        Message retain flag
+    qos : int
+        QoS level for message
     """
     _timefmt = "%H:%M:%S"
     _longtimefmt = _timefmt + "%d/%m %Y"
 
     def __init__(self, msg: bytes, topic: str, retain: bool, qos: int):
-        """
-        initialize the Message by setting its content and topic.
-
-        Parameter
-        ---------
-         msg:   Message content
-         topic: topic of the message
-        """
+        """Initialize message with content and metadata."""
         self.timestamp = time.time()
         self.timestr = time.strftime(self._timefmt,
                                      time.localtime(self.timestamp))
@@ -195,13 +221,13 @@ class Message:
         self.retain = retain
         self.qos = qos
 
-    def listLines(self):
-        """
-        method to return a list of lines describing the message.
+    def listLines(self) -> list:
+        """Return formatted message lines for display.
 
-        Every entry in the returned list includes a tuple of (intentation,
-        linetext, curses_attribute) which can be used to display the message on
-        the screen
+        Returns
+        -------
+        list
+            List of tuples (indentation, line text, curses attribute)
         """
         ret = [(self, 0, self.topic, curses.A_BOLD), ]
         try:
@@ -212,13 +238,13 @@ class Message:
                         curses.A_UNDERLINE))
         return ret
 
-    def listDetails(self):
-        """
-        returns details about the message.
+    def listDetails(self) -> list:
+        """Return detailed message information.
 
-        Every entry in the returned list includes a tuple of (intentation,
-        linetext, curses_attribute) which can be used to display the message on
-        the screen
+        Returns
+        -------
+        list
+            List of tuples (indentation, line text, curses attribute)
         """
         ret = self.listLines()
         ret.append((self, 0, '----', curses.A_BOLD))
@@ -232,24 +258,26 @@ class Message:
 
 
 class Communicator:
-    """
-    class to handle the communication with the MQTT Broker
+    """Client for communicating with MQTT broker.
+
+    Parameters
+    ----------
+    address : str
+        MQTT broker address
+    port : int
+        TCP port for connection
+    user : str, optional
+        Username for authentication
+    passwd : str, optional
+        Password for authentication
+    userdata : dict, optional
+        Data to pass to callbacks
     """
     def __init__(self, address: str, port: int, user: Optional[str] = None,
                 passwd: Optional[str] = None, userdata: Optional[dict] = None):
-        """
-        initialization of the connection to the MQTT Broker
-
-        Parameter
-        ---------
-         address:   address of the broker
-         port:      TCP port used by the Broker
-         user:      username used for the authentication (optional)
-         passwd:    password used for the authentication (optional)
-         userdata:  data object forwarded to all the callbacks
-        """
+        """Initialize connection to MQTT broker."""
         self.topics: list[str] = []
-        self.client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION1,
+        self.client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2,
                                        'mqttstatus')
         if user:
             self.client.username_pw_set(user, password=passwd)
@@ -260,29 +288,33 @@ class Communicator:
         self.client.connect(address, port, 60)
 
     def on_connect(self, client: Any, userdata: dict[str, Any],
-                  flags: dict[str, Any], rc: int):
-        """
-        callback upon successfull connection to the broker
+                  flags: dict[str, Any], reason_code: mqtt_client.ReasonCodes, properties = None) -> None:
+        """Handle successful connection to broker.
 
-        Parameter
-        ---------
-         client:    the client instance for this callback
-         userdata:  the private user data as set by the initialization
-         flags:     response flags sent by the broker
-         rc:        the connection result
+        Parameters
+        ----------
+        client : Any
+            Client instance for callback
+        userdata : dict
+            User data passed to callback
+        flags : dict
+            Response flags from broker
+        reason_code : ReasonCodes
+            Connection result code
+        properties : Any, optional
+            Connection properties
         """
         if 'StatusWindow' in userdata:
             cursesTUI.setStatusMessage(userdata['StatusWindow'],
-                                       'Connected with result code '+str(rc))
+                                       'Connected with result code '+str(reason_code))
 
-    def subscribe(self, *args: str):
-        """
-        method to subscribe to certain topics of the broker
+    def subscribe(self, *args: str) -> None:
+        """Subscribe to one or more topics.
 
-        Parameter
-        ---------
-         *args: topics to subscribe to. If none are given a subscription to '#'
-                is performed.
+        Parameters
+        ----------
+        *args : str
+            Topics to subscribe to
         """
         if len(args) == 0:
             self.client.subscribe("#")
@@ -293,16 +325,21 @@ class Communicator:
                 self.topics.append(t)
 
     def on_subscribe(self, client: Any, userdata: dict[str, Any],
-                    mid: int, qos: list[int]):
-        """
-        callback upon arrival of a subscribe confirmation from the broker.
+                    mid: int, reason_code: list[mqtt_client.ReasonCodes], properties = None) -> None:
+        """Handle subscribe confirmation from broker.
 
-        Parameter
-        ---------
-         client:    the client instance for this callback
-         userdata:  the private user data as set by the initialization.
-         mid:       message id
-         qos:       qos code from the broker
+        Parameters
+        ----------
+        client : Any
+            Client instance for callback
+        userdata : dict
+            User data passed to callback
+        mid : int
+            Message ID
+        reason_code : list[ReasonCodes]
+            QoS values for subscriptions
+        properties : Any, optional
+            Subscription properties
         """
         if 'StatusWindow' in userdata:
             t = ' '.join(self.topics)
@@ -310,22 +347,21 @@ class Communicator:
                 userdata['StatusWindow'],
                 'successfully subscribed topic: {}'.format(t))
 
-    def on_message(self, client: Any, userdata: dict[str, Any], msg: Any):
-        """
-        callback upon arrival of a message from the broker.
-        The new message is added to the corresponding MessageLists in the
-        userdata.
+    def on_message(self, client: Any, userdata: dict[str, Any], message: Any) -> None:
+        """Handle received messages from broker.
 
-        Parameter
-        ---------
-         client:    the client instance for this callback
-         userdata:  the private user data as set by the initialization.
-         msg:       an instance of MQTTMessage. This is a class with members
-                    topic, payload, qos, retain.
+        Parameters
+        ----------
+        client : Any
+            Client instance for callback
+        userdata : dict
+            User data passed to callback
+        message : Any
+            MQTT message with topic, payload, qos, retain, properties
         """
         # add message to the corresponding message list
-        m = Message(msg.payload, msg.topic, msg.retain, msg.qos)
-        userdata['TopicList'].addMessage(msg.topic, m)
+        m = Message(message.payload, message.topic, message.retain, message.qos)
+        userdata['TopicList'].addMessage(message.topic, m)
         # increase message counter
         userdata['nmsg'] += 1
         # show Message on screen
@@ -340,22 +376,22 @@ class Communicator:
 
 
 class cursesTUI:
-    """
-    The main class of mqttmon. Handles the TUI setup using curses and the
-    initialization of the broker connection. After initialization a loop is
-    started which handles the user input and update of the display.
+    """Text user interface using curses.
+
+    Main class for MQTT monitor with window management, broker connection
+    handling and display updates.
+
+    Parameters
+    ----------
+    stdscr : Any
+        Standard screen from curses.wrapper
+    args : argparse.Namespace
+        Command line arguments
     """
     statwidth = 2  # height of the status window area (minimum 2)
 
     def __init__(self, stdscr: Any, args: argparse.Namespace):
-        """
-        initialization of the windows and setting up of the communication
-
-        Parameter
-        ---------
-         stdscr:    standard screen as supplied by curses.wrapper. used as main
-                    window.
-        """
+        """Initialize windows and broker connection."""
         self.scroll = 0  # integer constant to save the scroll offset
         self.ispaused = False  # update mode paused flag
         self.updateMode = 'inplace'  # can be 'continuous': as recv msg
@@ -382,9 +418,7 @@ class cursesTUI:
         self.mainLoop(args.timeout)
 
     def initMain(self):
-        """
-        initialize main curses windows.
-        """
+        """Initialize main curses windows."""
         self.width_y, self.width_x = self.mainWindow.getmaxyx()
 
         # message window
@@ -400,9 +434,13 @@ class cursesTUI:
                                           self.width_y - self.statwidth, 0)
         self.redrawStatus()
 
-    def clearMsgWindow(self, title: str = 'Messages'):
-        """
-        clears the message window and redraws its border.
+    def clearMsgWindow(self, title: str = 'Messages') -> None:
+        """Clear and redraw message window border.
+
+        Parameters
+        ----------
+        title : str, optional
+            Window title to display
         """
         self.msgWindow.erase()
         self.msgWindow.border(0, 0, 0, 0)
@@ -412,10 +450,8 @@ class cursesTUI:
         self.ispaused = False
         self.lines = []
 
-    def redrawStatus(self):
-        """
-        redraws the status window keyboard shortcuts
-        """
+    def redrawStatus(self) -> None:
+        """Redraw status window with keyboard shortcuts."""
         h, w = self.statusWindow.getmaxyx()
         if w < 58:
             raise Exception("Window is too narrow, needs at least 58 width!")
@@ -439,10 +475,8 @@ class cursesTUI:
         else:
             self.statusWindow.addstr(1, 47, 'p-(un)pause')
 
-    def resize(self):
-        """
-        function to handle a resizing of the terminal window
-        """
+    def resize(self) -> None:
+        """Handle terminal window resize event."""
         old_width_y, old_width_x = (self.width_y, self.width_x)
         self.width_y, self.width_x = self.mainWindow.getmaxyx()
         self.msgWindow.resize(self.width_y - self.statwidth, self.width_x)
@@ -451,14 +485,15 @@ class cursesTUI:
         self.statusWindow.mvwin(self.width_y - self.statwidth, 0)
         self.update()
 
-    def resizeMsgWindow(self, old_width_y: int, old_width_x: int):
-        """
-        function handling a resizing of the message window. this avoids a full
-        redraw of the Message list and adds/removes only the necesarry content
+    def resizeMsgWindow(self, old_width_y: int, old_width_x: int) -> None:
+        """Handle message window resize.
 
-        Parameter
-        ---------
-         old_width_y, old_width_x: previous size of the main window
+        Parameters
+        ----------
+        old_width_y : int
+            Previous window height
+        old_width_x : int
+            Previous window width
         """
         old_textheight, old_contentwidth = (self.textheight, self.contentwidth)
         wy, wx = self.msgWindow.getmaxyx()
@@ -488,11 +523,13 @@ class cursesTUI:
         # fix border
         self.msgWindow.border(0, 0, 0, 0)
 
-    def mainLoop(self, timeout: int):
-        """
-        main loop of the program. checks for new messages or keyboard input
-        and updates the display. For the input checking a timeout (ms) is
-        used.
+    def mainLoop(self, timeout: int) -> None:
+        """Run main program loop.
+
+        Parameters
+        ----------
+        timeout : int
+            Input check timeout in ms
         """
         self.msgWindow.timeout(timeout)
         curses.curs_set(2)
@@ -535,10 +572,8 @@ class cursesTUI:
             self.updateMsgList()
             self.update()
 
-    def updateMsgList(self):
-        """
-        the message list will be updated depending on the current update mode
-        """
+    def updateMsgList(self) -> None:
+        """Update displayed message list based on mode."""
         self.msgWindow.move(1, 1)
         window = self.msgWindow
         # create message list
@@ -583,28 +618,28 @@ class cursesTUI:
         # show cursor position
         self.msgWindow.move(self.cursory+1, 1)
 
-    def update(self):
-        """
-        redraws the screen content after a string change
-        """
+    def update(self) -> None:
+        """Refresh screen content."""
         self.statusWindow.refresh()
         self.msgWindow.refresh()
 
     @staticmethod
     def setStatusMessage(window: Any, string: str, start: int = 14, end: int = -1,
-                         attr: int = curses.A_NORMAL):
-        """
-        Method setting the status message in the status bar. Here the arrival
-        of a new message/connection to the broker/subscription to a new
-        topic... should be shown.
+                         attr: int = curses.A_NORMAL) -> None:
+        """Set status message in status bar.
 
-        Parameter
-        ---------
-         window:    curses window where the string should be shown
-         string:    message to be shown
-         start:     intentation of the beginning of the message
-         end:       end position of the message (-1 = line end)
-         attr:      curses attribute for the text
+        Parameters
+        ----------
+        window : Any
+            Target curses window
+        string : str
+            Message to display
+        start : int, optional
+            Starting position, by default 14
+        end : int, optional
+            Ending position (-1 for line end), by default -1
+        attr : int, optional
+            Curses text attributes, by default normal
         """
         wy, wx = window.getmaxyx()
         window.move(0, start)
@@ -616,19 +651,21 @@ class cursesTUI:
 
     @staticmethod
     def addMultiLineStr(window: Any, string: str, start: int = 1, end: int = -1,
-                       attr: int = curses.A_NORMAL):
-        """
-        Method adding a string (possibly containing multiple line breaks) to a
-        curses window.
+                       attr: int = curses.A_NORMAL) -> None:
+        """Add multi-line string to curses window.
 
-        Parameter
-        ---------
-         window:    curses window where the string should be shown
-         string:    message to be shown
-         start:     intentation of the beginning of the message. Every line
-                    will be intented by this amount
-         end:       end position of the message (-1 = line end)
-         attr:      curses attribute for the text
+        Parameters
+        ----------
+        window : Any
+            Target curses window
+        string : str
+            Text to display
+        start : int, optional
+            Indent for each line, by default 1
+        end : int, optional
+            Line end position (-1 for window end), by default -1
+        attr : int, optional
+            Curses text attributes, by default normal
         """
         y, x = window.getyx()
         wy, wx = window.getmaxyx()
@@ -637,18 +674,21 @@ class cursesTUI:
 
     @staticmethod
     def addLineStr(window: Any, line: str, nchar: int, start: int = 1,
-                  attr: int = curses.A_NORMAL):
-        """
-        Method adding a string (without line breaks) to a curses window.
+                  attr: int = curses.A_NORMAL) -> None:
+        """Add single line string to curses window.
 
-        Parameter
-        ---------
-         window:    curses window where the string should be shown
-         string:    message to be shown
-         start:     intentation of the beginning of the message. Every line
-                    will be intented by this amount
-         end:       end position of the message (-1 = line end)
-         attr:      curses attribute for the text
+        Parameters
+        ----------
+        window : Any
+            Target curses window
+        line : str
+            Text to display
+        nchar : int
+            Number of characters to write
+        start : int, optional
+            Starting position, by default 1
+        attr : int, optional
+            Curses text attributes, by default normal
         """
         y, x = window.getyx()
         window.move(y, 1)
