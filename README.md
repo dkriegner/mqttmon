@@ -72,4 +72,4 @@ The project is in beta-phase. Might need improvements but is basically usable! A
 This script is written in Python and therefore needs
 
 * [Python 3.X](https://www.python.org/downloads) and 
-* the [paho-mqtt](https://pypi.python.org/pypi/paho-mqtt) package
+* the [paho-mqtt](https://pypi.python.org/pypi/paho-mqtt) package (>v2.0)
