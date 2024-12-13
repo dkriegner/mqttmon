@@ -15,19 +15,22 @@
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see <http://www.gnu.org/licenses/>.
 #
-# Copyright (C) 2015 Dominik Kriegner <dominik.kriegner@gmail.com>
+# Copyright (C) 2015, 2024 Dominik Kriegner <dominik.kriegner@gmail.com>
+
+from __future__ import annotations
 
 import argparse
 import collections
 import configparser
-import copy
 import curses
 import curses.panel
 import itertools
-import time
 import sys
+import time
+from dataclasses import dataclass
+from typing import Any, Optional
 
-import paho.mqtt.client as paho
+from paho.mqtt import client as mqtt_client
 
 
 class TopicList(dict):
@@ -37,12 +40,12 @@ class TopicList(dict):
     MessageList is created. The topics are sorted in a Tree structure for
     later processing.
     """
-    def __init__(self, name, path=None):
+    def __init__(self, name: str, path: Optional[str] = None):
         super().__init__()
         self.name = '/'.join((path, name)) if path else name
         self.msglist = MessageList(name)
 
-    def addSubTopic(self, topicName, path):
+    def addSubTopic(self, topicName: str, path: str):
         """
         add new Topic to the TopicList
 
@@ -52,7 +55,7 @@ class TopicList(dict):
         """
         super().__setitem__(topicName, TopicList(topicName, path))
 
-    def addMessage(self, topic, msg):
+    def addMessage(self, topic: str, msg: Any):
         """
         add new Message to a certain topic.
 
@@ -71,7 +74,7 @@ class TopicList(dict):
             else:
                 super().__getitem__(lt[0]).addMessage(None, msg)
 
-    def getMessages(self, mode):
+    def getMessages(self, mode: str):
         """
         return different types of message lists
         """
@@ -140,7 +143,7 @@ class MessageList(collections.deque):
     and provides textlines to display the message on the screen.
     """
 
-    def __init__(self, name, maxlen=512):
+    def __init__(self, name: str, maxlen: int = 512):
         """
         initialize the message list
 
@@ -152,7 +155,7 @@ class MessageList(collections.deque):
         self.lines = collections.deque(maxlen=maxlen*2)
         super().__init__(maxlen=maxlen)
 
-    def append(self, msg):
+    def append(self, msg: Any):
         """
         append a msg to the list.
 
@@ -164,7 +167,7 @@ class MessageList(collections.deque):
         super().append(msg)
 
 
-class Message(object):
+class Message:
     """
     Message object holding all the information about a message. In addition to
     the message itself this are the topic under which the message was received
@@ -175,7 +178,7 @@ class Message(object):
     _timefmt = "%H:%M:%S"
     _longtimefmt = _timefmt + "%d/%m %Y"
 
-    def __init__(self, msg, topic, retain, qos):
+    def __init__(self, msg: bytes, topic: str, retain: bool, qos: int):
         """
         initialize the Message by setting its content and topic.
 
@@ -228,11 +231,12 @@ class Message(object):
         return ret
 
 
-class Communicator(object):
+class Communicator:
     """
     class to handle the communication with the MQTT Broker
     """
-    def __init__(self, address, port, user=None, passwd=None, userdata=None):
+    def __init__(self, address: str, port: int, user: Optional[str] = None,
+                passwd: Optional[str] = None, userdata: Optional[dict] = None):
         """
         initialization of the connection to the MQTT Broker
 
@@ -244,8 +248,9 @@ class Communicator(object):
          passwd:    password used for the authentication (optional)
          userdata:  data object forwarded to all the callbacks
         """
-        self.topics = []
-        self.client = paho.Client('mqttstatus')
+        self.topics: list[str] = []
+        self.client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION1,
+                                       'mqttstatus')
         if user:
             self.client.username_pw_set(user, password=passwd)
         self.client.on_connect = self.on_connect
@@ -254,7 +259,8 @@ class Communicator(object):
         self.client.user_data_set(userdata)
         self.client.connect(address, port, 60)
 
-    def on_connect(self, client, userdata, flags, rc):
+    def on_connect(self, client: Any, userdata: dict[str, Any],
+                  flags: dict[str, Any], rc: int):
         """
         callback upon successfull connection to the broker
 
@@ -269,7 +275,7 @@ class Communicator(object):
             cursesTUI.setStatusMessage(userdata['StatusWindow'],
                                        'Connected with result code '+str(rc))
 
-    def subscribe(self, *args):
+    def subscribe(self, *args: str):
         """
         method to subscribe to certain topics of the broker
 
@@ -286,7 +292,8 @@ class Communicator(object):
                 self.client.subscribe(t)
                 self.topics.append(t)
 
-    def on_subscribe(self, client, userdata, mid, qos):
+    def on_subscribe(self, client: Any, userdata: dict[str, Any],
+                    mid: int, qos: list[int]):
         """
         callback upon arrival of a subscribe confirmation from the broker.
 
@@ -303,7 +310,7 @@ class Communicator(object):
                 userdata['StatusWindow'],
                 'successfully subscribed topic: {}'.format(t))
 
-    def on_message(self, client, userdata, msg):
+    def on_message(self, client: Any, userdata: dict[str, Any], msg: Any):
         """
         callback upon arrival of a message from the broker.
         The new message is added to the corresponding MessageLists in the
@@ -332,7 +339,7 @@ class Communicator(object):
                                                       time=m.timestr))
 
 
-class cursesTUI(object):
+class cursesTUI:
     """
     The main class of mqttmon. Handles the TUI setup using curses and the
     initialization of the broker connection. After initialization a loop is
@@ -340,7 +347,7 @@ class cursesTUI(object):
     """
     statwidth = 2  # height of the status window area (minimum 2)
 
-    def __init__(self, stdscr, args):
+    def __init__(self, stdscr: Any, args: argparse.Namespace):
         """
         initialization of the windows and setting up of the communication
 
@@ -393,7 +400,7 @@ class cursesTUI(object):
                                           self.width_y - self.statwidth, 0)
         self.redrawStatus()
 
-    def clearMsgWindow(self, title='Messages'):
+    def clearMsgWindow(self, title: str = 'Messages'):
         """
         clears the message window and redraws its border.
         """
@@ -444,7 +451,7 @@ class cursesTUI(object):
         self.statusWindow.mvwin(self.width_y - self.statwidth, 0)
         self.update()
 
-    def resizeMsgWindow(self, old_width_y, old_width_x):
+    def resizeMsgWindow(self, old_width_y: int, old_width_x: int):
         """
         function handling a resizing of the message window. this avoids a full
         redraw of the Message list and adds/removes only the necesarry content
@@ -481,7 +488,7 @@ class cursesTUI(object):
         # fix border
         self.msgWindow.border(0, 0, 0, 0)
 
-    def mainLoop(self, timeout):
+    def mainLoop(self, timeout: int):
         """
         main loop of the program. checks for new messages or keyboard input
         and updates the display. For the input checking a timeout (ms) is
@@ -570,9 +577,9 @@ class cursesTUI(object):
         self.msgWindow.move(1, 1)
         shownlines = itertools.islice(self.lines, lstart, lstart+nlines)
         self.shownobjects = []
-        for c, (o, i, l, a) in enumerate(shownlines):
+        for c, (o, i, line_text, a) in enumerate(shownlines):
             self.shownobjects.append(o)
-            self.addLineStr(window, l, self.contentwidth-i, 1+i, attr=a)
+            self.addLineStr(window, line_text, self.contentwidth-i, 1+i, attr=a)
         # show cursor position
         self.msgWindow.move(self.cursory+1, 1)
 
@@ -584,8 +591,8 @@ class cursesTUI(object):
         self.msgWindow.refresh()
 
     @staticmethod
-    def setStatusMessage(window, string, start=14, end=-1,
-                         attr=curses.A_NORMAL):
+    def setStatusMessage(window: Any, string: str, start: int = 14, end: int = -1,
+                         attr: int = curses.A_NORMAL):
         """
         Method setting the status message in the status bar. Here the arrival
         of a new message/connection to the broker/subscription to a new
@@ -608,7 +615,8 @@ class cursesTUI(object):
             window.addnstr(line, end-start, attr)
 
     @staticmethod
-    def addMultiLineStr(window, string, start=1, end=-1, attr=curses.A_NORMAL):
+    def addMultiLineStr(window: Any, string: str, start: int = 1, end: int = -1,
+                       attr: int = curses.A_NORMAL):
         """
         Method adding a string (possibly containing multiple line breaks) to a
         curses window.
@@ -628,7 +636,8 @@ class cursesTUI(object):
             cursesTUI.addLineStr(window, line, wy-start+end, start, attr=attr)
 
     @staticmethod
-    def addLineStr(window, line, nchar, start=1, attr=curses.A_NORMAL):
+    def addLineStr(window: Any, line: str, nchar: int, start: int = 1,
+                  attr: int = curses.A_NORMAL):
         """
         Method adding a string (without line breaks) to a curses window.
 
@@ -669,7 +678,7 @@ if __name__ == '__main__':
         'brokeraddr': None
         }
     if args.config:
-        config = configparser.SafeConfigParser()
+        config = configparser.ConfigParser()
         config.read([args.config])
         for item, val in config.items("Defaults"):
             defaults[item] = val
